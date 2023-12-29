@@ -118,12 +118,20 @@ def get_user_detail(current_user, id):
 
 def create_user():
     data = request.get_json()
+
+    existing_user = User.query.filter_by(email= data['email']).first()
+    if existing_user:
+        return jsonify({'Message': 'Email already exists!'})
     
     hashed_password = generate_password_hash(data['password'], method='pbkdf2:sha256')
     new_user = User(public_id=str(uuid.uuid4()), name=data['name'], email=data['email'], password=hashed_password)
-    db.session.add(new_user)
-    db.session.commit()
-    return jsonify({'Message': 'New user has been registered!'})
+
+    try:
+        db.session.add(new_user)
+        db.session.commit()
+        return jsonify({'Message': 'New user has been registered!'})
+    except:
+        return jsonify({'Message': 'Error occured while registration, please try again.'})
 
 
 # Delete user
@@ -146,7 +154,7 @@ def login():
     auth = request.authorization
 
     if not auth or not auth.username or not auth.password:
-        return make_response('Could not verify', 401, {'WWW-Authenticate': 'Basic realm="Login required!"'})
+        return make_response('Could not verify, please try again.', 401, {'WWW-Authenticate': 'Basic realm="Login required!"'})
     
     email_pattern = re.compile(r"[^@]+@[^@]+\.[^@]+")
     if not email_pattern.match(auth.username):
@@ -158,7 +166,7 @@ def login():
     print(f"Auth Password: {auth.password}")
 
     if not user:
-        return make_response('Could not verify', 402, {'WWW-Authenticate': 'Basic realm="Login required!"'})
+        return make_response('Could not verify', 401, {'WWW-Authenticate': 'Basic realm="Login required!"'})
     
     print(f"Auth Password: {auth.password}")
     print(f"User Password: {user.password}")
@@ -171,6 +179,18 @@ def login():
         return make_response(jsonify({'token': token}), 201)
     
     return make_response('Could not verify', 403, {'WWW-Authenticate': 'Basic realm="Login required!"'})
+
+
+# Logot the user and expiration of token
+# to blacklist token
+blacklist = set()
+
+@app.route('/logout', methods=['POST'])
+@token_required
+def logout(current_user):
+    token = request.headers['x-access-token']
+    blacklist.add(token)
+    return jsonify({'Message': 'Logout successful!'})
 
 
 
@@ -230,9 +250,9 @@ def create_task(current_user):
 
 
 # Edit Task- Update the task with given task ID
-@app.route('/task/<task_id>', methods=['PUT'])
+@app.route('/update_task/<task_id>', methods=['PUT'])
 @token_required
-def task(current_user, task_id):
+def update_task(current_user, task_id):
     task = Task.query.filter_by(id=task_id, user_id=current_user.id).first()
 
     if not task:
@@ -240,9 +260,14 @@ def task(current_user, task_id):
     
     data = request.get_json()
     
-    task.title=data['title'] 
-    task.due_date=data['due_date'] 
-    task.attachment=data['attachment']
+    # Check if the fields are present in the provided data
+    if 'title' in data:
+        task.title=data['title'] 
+    
+    if 'due_date' in data:
+        task.due_date=data['due_date'] 
+    if 'attachment' in data:
+        task.attachment=data['attachment']
 
     db.session.commit()
     return jsonify({'Message': 'Task has been updated'})
