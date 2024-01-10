@@ -12,7 +12,6 @@ from functools import wraps
 import re
 
 
-
 # Initialize the app
 app = Flask(__name__)
 
@@ -154,11 +153,11 @@ def login():
     auth = request.authorization
 
     if not auth or not auth.username or not auth.password:
-        return make_response('Could not verify, please try again.', 401, {'WWW-Authenticate': 'Basic realm="Login required!"'})
+        return make_response('Could not verify, please try again.', 401)
     
     email_pattern = re.compile(r"[^@]+@[^@]+\.[^@]+")
     if not email_pattern.match(auth.username):
-        return make_response('Invalid email format', 401, {'WWW-Authenticate': 'Basic realm="Login required!"'})
+        return make_response('Invalid email format', 401)
 
     user = User.query.filter_by(email=auth.username).first()
     print(user)
@@ -166,7 +165,7 @@ def login():
     print(f"Auth Password: {auth.password}")
 
     if not user:
-        return make_response('Could not verify', 401, {'WWW-Authenticate': 'Basic realm="Login required!"'})
+        return make_response('Email does not exist!', 401)
     
     print(f"Auth Password: {auth.password}")
     print(f"User Password: {user.password}")
@@ -178,7 +177,7 @@ def login():
        
         return make_response(jsonify({'token': token}), 201)
     
-    return make_response('Could not verify', 403, {'WWW-Authenticate': 'Basic realm="Login required!"'})
+    return make_response('Could not verify, please try again.', 403)
 
 
 # Logot the user and expiration of token
@@ -214,6 +213,36 @@ def get_all_tasks(current_user):
         output.append(task_data)
 
     return jsonify({'tasks': output})
+
+
+# Get all Tasks with Pagination
+@app.route('/all_tasks', methods=['GET'])
+@token_required
+def get_my_tasks(current_user):
+
+    page = request.args.get('page', 1, type=int)
+    per_page = 5     # defining 5 tasks per page to be displayed
+
+    # Calculate the offset based on the page number to determine which set of tasks to retrieve
+    offset = (page - 1) * per_page
+
+    # retrieve tasks with pagination    
+    tasks = Task.query.filter_by(user_id=current_user.id).offset(offset).limit(per_page).all()
+
+    output = []
+    for task in tasks:
+        task_data = {}
+        task_data['id'] = task.id
+        task_data['title'] = task.title
+        task_data['due_date'] = task.due_date
+        task_data['attachment'] = task.attachment
+
+        output.append(task_data)
+
+    total_tasks = Task.query.filter_by(user_id=current_user.id).count()
+
+    return jsonify({'tasks': output, 'page':page, 'per_page':per_page, 'total_tasks':total_tasks, 'total_pages':(total_tasks + per_page -1)//per_page})
+
 
 
 # get task of the logged-in user with Task ID
